@@ -1,0 +1,29 @@
+{
+  "name": "step-05-summary",
+  "version": "1.0.0",
+  "description": "Step 5: サマリー機能 - 会話の要約と長期タスク対応",
+  "main": "agent.ts",
+  "scripts": {
+    "start": "tsx agent.ts",
+    "dev": "tsx watch agent.ts"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "agent",
+    "summary",
+    "context-management",
+    "tutorial"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "js-tiktoken": "^1.0.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}

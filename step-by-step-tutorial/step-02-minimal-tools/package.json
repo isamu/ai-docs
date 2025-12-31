@@ -1,0 +1,27 @@
+{
+  "name": "step-02-minimal-tools",
+  "version": "1.0.0",
+  "description": "Step 2: 最小限のツール - 計算と時刻取得",
+  "main": "agent.ts",
+  "scripts": {
+    "start": "tsx agent.ts",
+    "dev": "tsx watch agent.ts"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "agent",
+    "tools",
+    "tutorial"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}

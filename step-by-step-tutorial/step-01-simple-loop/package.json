@@ -1,0 +1,26 @@
+{
+  "name": "step-01-simple-loop",
+  "version": "1.0.0",
+  "description": "Step 1: シンプルなループ - AIエージェントの基本",
+  "main": "agent.ts",
+  "scripts": {
+    "start": "tsx agent.ts",
+    "dev": "tsx watch agent.ts"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "agent",
+    "tutorial"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}

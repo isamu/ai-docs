@@ -1,0 +1,28 @@
+{
+  "name": "step-04-context-management",
+  "version": "1.0.0",
+  "description": "Step 4: コンテキスト管理 - トークン制限への対応",
+  "main": "agent.ts",
+  "scripts": {
+    "start": "tsx agent.ts",
+    "dev": "tsx watch agent.ts"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "agent",
+    "context-management",
+    "tutorial"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "js-tiktoken": "^1.0.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}
