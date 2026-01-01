@@ -1,0 +1,2 @@
+Hello, this is an example file!
+You can read and modify this file.
