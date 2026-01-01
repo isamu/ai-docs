@@ -1,11 +1,13 @@
 {
-  "name": "step-03-file-operations",
+  "name": "ai-agent-example",
   "version": "1.0.0",
-  "description": "Step 3: ファイル操作 - 読み書き、一覧表示",
+  "description": "AI Agent with modular tools, LLM abstraction, and history management",
   "main": "agent.ts",
   "scripts": {
     "start": "tsx --env-file .env agent.ts",
-    "dev": "tsx watch agent.ts"
+    "dev": "tsx watch agent.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "ai",

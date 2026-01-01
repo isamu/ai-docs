@@ -1,12 +1,20 @@
 /**
- * AI Agent with modular tools
+ * AI Agent with modular tools, LLM abstraction, and history management
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import * as readline from "readline/promises";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import {
+  LLMProvider,
+  LLMResponse,
+  ContentBlock,
+  ToolUse,
+  StreamEvent,
+} from "./llm";
+import { AnthropicProvider } from "./llm/anthropic";
+import { ConversationHistory } from "./history";
 import { getToolDefinitions, executeTool, getToolNames } from "./tools";
 
 // 定数
@@ -20,12 +28,6 @@ const SAMPLE_FILE_CONTENT = "Hello, this is an example file!\nYou can read and m
 const EXIT_COMMANDS = ["exit", "quit", ""];
 const ATTEMPT_COMPLETION_TOOL_NAME = "attempt_completion";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-type Message = Anthropic.MessageParam;
-
 interface AttemptCompletionInput {
   result: string;
 }
@@ -33,6 +35,15 @@ interface AttemptCompletionInput {
 interface ProcessResult {
   shouldContinue: boolean;
   isCompleted: boolean;
+}
+
+// LLMプロバイダーを作成
+function createLLMProvider(): LLMProvider {
+  return new AnthropicProvider({
+    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    model: MODEL_NAME,
+    maxTokens: MAX_TOKENS,
+  });
 }
 
 /**
@@ -50,96 +61,90 @@ async function getUserInput(prompt: string = "入力"): Promise<string> {
 }
 
 /**
- * Claude APIを呼び出し
+ * ストリームイベントを処理
  */
-async function callClaude(messages: readonly Message[]): Promise<Anthropic.Message> {
-  console.log("\n🤖 LLMの応答:");
-
-  const stream = anthropic.messages.stream({
-    model: MODEL_NAME,
-    max_tokens: MAX_TOKENS,
-    messages: [...messages],
-    tools: getToolDefinitions(),
-  });
-
-  stream.on("text", (text: string): void => {
-    process.stdout.write(text);
-  });
-
-  stream.on("contentBlock", (block: Anthropic.ContentBlock): void => {
-    if (block.type === "tool_use") {
-      console.log(`\n🔧 ツール使用: ${block.name}`);
-    }
-  });
-
-  const response = await stream.finalMessage();
-  console.log();
-
-  return response;
+function handleStreamEvent(event: StreamEvent): void {
+  switch (event.type) {
+    case "text":
+      process.stdout.write(event.text ?? "");
+      break;
+    case "tool_use_start":
+      console.log(`\n🔧 ツール使用: ${event.toolName}`);
+      break;
+    case "done":
+      console.log();
+      break;
+  }
 }
 
 /**
- * ツール使用結果を処理
+ * LLMを呼び出し
+ */
+async function callLLM(
+  provider: LLMProvider,
+  history: ConversationHistory
+): Promise<LLMResponse> {
+  console.log("\n🤖 LLMの応答:");
+
+  const tools = getToolDefinitions();
+  const messages = history.toBaseMessages();
+
+  return provider.call(messages, tools, handleStreamEvent);
+}
+
+/**
+ * ツール使用を処理
  */
 async function processToolUse(
-  toolUse: Anthropic.ToolUseBlock
-): Promise<{ toolResult: Anthropic.ToolResultBlockParam; isCompleted: boolean }> {
+  toolUse: ToolUse,
+  history: ConversationHistory
+): Promise<{ isCompleted: boolean }> {
   if (toolUse.name === ATTEMPT_COMPLETION_TOOL_NAME) {
-    const input = toolUse.input as AttemptCompletionInput;
+    const input = toolUse.input as unknown as AttemptCompletionInput;
     console.log("\n✅ タスク完了:", input.result);
-    return {
-      toolResult: {
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: "タスク完了を確認しました",
-      },
-      isCompleted: true,
-    };
+    history.addTaskCompletion(input.result);
+    return { isCompleted: true };
   }
 
-  const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>);
-  return {
-    toolResult: {
-      type: "tool_result",
-      tool_use_id: toolUse.id,
-      content: result,
-    },
-    isCompleted: false,
-  };
+  const result = await executeTool(toolUse.name, toolUse.input);
+  history.addToolResult(toolUse.name, toolUse.id, result);
+  return { isCompleted: false };
+}
+
+/**
+ * ツール使用ブロックを抽出
+ */
+function extractToolUses(content: ContentBlock[]): ToolUse[] {
+  return content
+    .filter((block): block is ContentBlock & { type: "tool_use" } => block.type === "tool_use")
+    .map((block) => block.toolUse);
 }
 
 /**
  * LLMの応答を処理
  */
 async function processResponse(
-  response: Anthropic.Message,
-  messages: Message[]
+  response: LLMResponse,
+  history: ConversationHistory
 ): Promise<ProcessResult> {
-  messages.push({
-    role: "assistant",
-    content: response.content,
-  });
+  // アシスタントの応答を履歴に追加
+  history.addAssistantMessage(response.content);
 
-  if (response.stop_reason === "end_turn") {
+  if (response.stopReason === "end_turn") {
     return { shouldContinue: false, isCompleted: false };
   }
 
-  const toolUses = response.content.filter(
-    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-  );
+  const toolUses = extractToolUses(response.content);
 
   if (toolUses.length === 0) {
     return { shouldContinue: true, isCompleted: false };
   }
 
-  const processedResults = await Promise.all(toolUses.map(processToolUse));
-  const toolResults = processedResults.map((r) => r.toolResult);
-  const hasCompletion = processedResults.some((r) => r.isCompleted);
-
-  messages.push({
-    role: "user",
-    content: toolResults,
-  });
+  // ツール結果を処理
+  const results = await Promise.all(
+    toolUses.map((toolUse) => processToolUse(toolUse, history))
+  );
+  const hasCompletion = results.some((r) => r.isCompleted);
 
   return {
     shouldContinue: !hasCompletion,
@@ -151,7 +156,8 @@ async function processResponse(
  * 会話ループを実行（再帰的）
  */
 async function runConversationLoop(
-  messages: Message[],
+  provider: LLMProvider,
+  history: ConversationHistory,
   iterationCount: number
 ): Promise<void> {
   if (iterationCount >= MAX_ITERATIONS) {
@@ -159,11 +165,11 @@ async function runConversationLoop(
     return;
   }
 
-  const response = await callClaude(messages);
-  const { shouldContinue } = await processResponse(response, messages);
+  const response = await callLLM(provider, history);
+  const { shouldContinue } = await processResponse(response, history);
 
   if (shouldContinue) {
-    await runConversationLoop(messages, iterationCount + 1);
+    await runConversationLoop(provider, history, iterationCount + 1);
   }
 }
 
@@ -197,16 +203,16 @@ async function initializeWorkspace(): Promise<void> {
 /**
  * ヘッダーを表示
  */
-function displayHeader(): void {
+function displayHeader(providerName: string): void {
   const separator = "=".repeat(SEPARATOR_LENGTH);
   console.log(separator);
-  console.log("AI Agent");
+  console.log(`AI Agent (${providerName})`);
   console.log(separator);
   console.log("\n利用可能なツール:");
   getToolNames().forEach((name) => {
     console.log(`  • ${name}`);
   });
-  console.log("\n終了するには 'exit' または 'quit' と入力してください");
+  console.log("\n終了するには 'exit'、'quit'、または Ctrl+C");
 }
 
 /**
@@ -222,7 +228,10 @@ function displayFooter(): void {
 /**
  * メインの会話ループ
  */
-async function mainLoop(messages: Message[]): Promise<void> {
+async function mainLoop(
+  provider: LLMProvider,
+  history: ConversationHistory
+): Promise<void> {
   const input = await getUserInput();
 
   if (isExitCommand(input)) {
@@ -230,26 +239,38 @@ async function mainLoop(messages: Message[]): Promise<void> {
     return;
   }
 
-  messages.push({
-    role: "user",
-    content: input,
-  });
+  history.addUserMessage(input);
 
   const initialIterationCount = 0;
-  await runConversationLoop(messages, initialIterationCount);
-  await mainLoop(messages);
+  await runConversationLoop(provider, history, initialIterationCount);
+  await mainLoop(provider, history);
+}
+
+/**
+ * Ctrl+C ハンドラーを設定
+ */
+function setupSignalHandlers(): void {
+  process.on("SIGINT", () => {
+    console.log("\n\n👋 Ctrl+C で終了します");
+    displayFooter();
+    process.exit(0);
+  });
 }
 
 /**
  * メイン関数
  */
 async function main(): Promise<void> {
-  displayHeader();
+  setupSignalHandlers();
+
+  const provider = createLLMProvider();
+  const history = new ConversationHistory();
+
+  displayHeader(provider.name);
 
   try {
     await initializeWorkspace();
-    const messages: Message[] = [];
-    await mainLoop(messages);
+    await mainLoop(provider, history);
     displayFooter();
   } catch (error) {
     console.error("\n❌ エラーが発生しました:", error);

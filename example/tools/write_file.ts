@@ -22,7 +22,7 @@ export const writeFileTool: ToolDefinition = {
     name: "write_file",
     description:
       "指定されたパスにコンテンツを書き込みます。既存のファイルは上書きされます。workspace/ディレクトリ内のみ書き込み可能です。",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         path: {

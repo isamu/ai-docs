@@ -12,7 +12,7 @@ export const calculatorTool: ToolDefinition = {
   definition: {
     name: "calculator",
     description: "数式を計算します。四則演算（+, -, *, /）と括弧が使えます。",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         expression: {

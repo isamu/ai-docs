@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ToolSchema } from "../llm/types";
 import { ToolDefinition } from "./types";
 import { readFileTool } from "./read_file";
 import { writeFileTool } from "./write_file";
@@ -23,7 +23,7 @@ const toolRegistry: Record<string, ToolDefinition> = {
 /**
  * ツール定義の配列を取得
  */
-export function getToolDefinitions(): Anthropic.Tool[] {
+export function getToolDefinitions(): ToolSchema[] {
   return Object.values(toolRegistry).map((tool) => tool.definition);
 }
 

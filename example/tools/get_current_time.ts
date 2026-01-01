@@ -19,7 +19,7 @@ export const getCurrentTimeTool: ToolDefinition = {
   definition: {
     name: "get_current_time",
     description: "現在の日時を取得します。",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {},
       required: [],

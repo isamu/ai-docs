@@ -1,6 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ToolSchema } from "../llm/types";
 
 export interface ToolDefinition {
-  definition: Anthropic.Tool;
+  definition: ToolSchema;
   execute: (input: Record<string, unknown>) => Promise<string>;
 }

@@ -8,7 +8,7 @@ export const attemptCompletionTool: ToolDefinition = {
   definition: {
     name: "attempt_completion",
     description: "タスクが完了したときに呼び出すツール。",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         result: {

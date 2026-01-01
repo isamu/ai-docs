@@ -28,7 +28,7 @@ export const readFileTool: ToolDefinition = {
     name: "read_file",
     description:
       "指定されたパスのファイルの内容を読み取ります。workspace/ディレクトリ内のファイルのみアクセス可能です。",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         path: {

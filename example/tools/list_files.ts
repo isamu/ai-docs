@@ -28,7 +28,7 @@ export const listFilesTool: ToolDefinition = {
     name: "list_files",
     description:
       "指定されたディレクトリ内のファイルとディレクトリの一覧を取得します。パスを省略するとworkspace/の内容を一覧表示します。",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         path: {
