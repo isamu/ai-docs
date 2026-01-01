@@ -2,7 +2,26 @@ import { readdir } from "fs/promises";
 import path from "path";
 import { ToolDefinition } from "./types";
 
-const WORKSPACE = path.join(process.cwd(), "workspace");
+const WORKSPACE_DIR = path.join(process.cwd(), "workspace");
+const EMPTY_DIRECTORY_MESSAGE = "（空のディレクトリ）";
+
+interface ListFilesInput {
+  path?: string;
+}
+
+interface FileSystemError extends Error {
+  code?: string;
+}
+
+function isFileSystemError(error: unknown): error is FileSystemError {
+  return error instanceof Error && "code" in error;
+}
+
+const ERROR_MESSAGES = {
+  OUTSIDE_WORKSPACE: "エラー: ワークスペース外にはアクセスできません",
+  DIRECTORY_NOT_FOUND: (dirPath: string): string => `エラー: ディレクトリが見つかりません: ${dirPath}`,
+  GENERIC: (message: string): string => `エラー: ${message}`,
+} as const;
 
 export const listFilesTool: ToolDefinition = {
   definition: {
@@ -20,24 +39,31 @@ export const listFilesTool: ToolDefinition = {
     },
   },
 
-  async execute(input: { path?: string }): Promise<string> {
-    const dirPath = input.path ? path.resolve(WORKSPACE, input.path) : WORKSPACE;
+  async execute(rawInput: Record<string, unknown>): Promise<string> {
+    const input = rawInput as ListFilesInput;
+    const dirPath = input.path
+      ? path.resolve(WORKSPACE_DIR, input.path)
+      : WORKSPACE_DIR;
 
-    // セキュリティチェック
-    if (!dirPath.startsWith(WORKSPACE)) {
-      return "エラー: ワークスペース外にはアクセスできません";
+    if (!dirPath.startsWith(WORKSPACE_DIR)) {
+      return ERROR_MESSAGES.OUTSIDE_WORKSPACE;
     }
 
     try {
       const files = await readdir(dirPath);
-      const result = files.length > 0 ? files.join("\n") : "（空のディレクトリ）";
-      console.log(`   結果: ${files.length}個のファイル/ディレクトリ`);
+      const fileCount = files.length;
+      const result = fileCount > 0 ? files.join("\n") : EMPTY_DIRECTORY_MESSAGE;
+      console.log(`   結果: ${fileCount}個のファイル/ディレクトリ`);
       return result;
-    } catch (error: any) {
-      if (error.code === "ENOENT") {
-        return `エラー: ディレクトリが見つかりません: ${input.path || "workspace/"}`;
+    } catch (error: unknown) {
+      if (!isFileSystemError(error)) {
+        return ERROR_MESSAGES.GENERIC(String(error));
       }
-      return `エラー: ${error.message}`;
+
+      if (error.code === "ENOENT") {
+        return ERROR_MESSAGES.DIRECTORY_NOT_FOUND(input.path ?? "workspace/");
+      }
+      return ERROR_MESSAGES.GENERIC(error.message);
     }
   },
 };

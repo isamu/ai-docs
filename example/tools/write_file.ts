@@ -3,7 +3,19 @@ import path from "path";
 import { existsSync } from "fs";
 import { ToolDefinition } from "./types";
 
-const WORKSPACE = path.join(process.cwd(), "workspace");
+const WORKSPACE_DIR = path.join(process.cwd(), "workspace");
+
+interface WriteFileInput {
+  path: string;
+  content: string;
+}
+
+const ERROR_MESSAGES = {
+  OUTSIDE_WORKSPACE: "エラー: ワークスペース外のファイルには書き込めません",
+  GENERIC: (message: string): string => `エラー: ${message}`,
+} as const;
+
+const SUCCESS_MESSAGE = (filePath: string): string => `✅ ファイルを書き込みました: ${filePath}`;
 
 export const writeFileTool: ToolDefinition = {
   definition: {
@@ -26,26 +38,26 @@ export const writeFileTool: ToolDefinition = {
     },
   },
 
-  async execute(input: { path: string; content: string }): Promise<string> {
-    const filePath = path.resolve(WORKSPACE, input.path);
+  async execute(rawInput: Record<string, unknown>): Promise<string> {
+    const input = rawInput as unknown as WriteFileInput;
+    const filePath = path.resolve(WORKSPACE_DIR, input.path);
 
-    // セキュリティチェック
-    if (!filePath.startsWith(WORKSPACE)) {
-      return "エラー: ワークスペース外のファイルには書き込めません";
+    if (!filePath.startsWith(WORKSPACE_DIR)) {
+      return ERROR_MESSAGES.OUTSIDE_WORKSPACE;
     }
 
     try {
-      // ディレクトリが存在しない場合は作成
-      const dir = path.dirname(filePath);
-      if (!existsSync(dir)) {
-        await mkdir(dir, { recursive: true });
+      const dirPath = path.dirname(filePath);
+      if (!existsSync(dirPath)) {
+        await mkdir(dirPath, { recursive: true });
       }
 
       await writeFile(filePath, input.content, "utf-8");
       console.log(`   結果: ${input.content.length}文字を書き込みました`);
-      return `✅ ファイルを書き込みました: ${input.path}`;
-    } catch (error: any) {
-      return `エラー: ${error.message}`;
+      return SUCCESS_MESSAGE(input.path);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return ERROR_MESSAGES.GENERIC(message);
     }
   },
 };

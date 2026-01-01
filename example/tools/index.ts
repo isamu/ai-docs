@@ -7,6 +7,9 @@ import { calculatorTool } from "./calculator";
 import { getCurrentTimeTool } from "./get_current_time";
 import { attemptCompletionTool } from "./attempt_completion";
 
+const ERROR_UNKNOWN_TOOL = (toolName: string): string => `エラー: 不明なツール '${toolName}'`;
+const ERROR_GENERIC = (message: string): string => `エラー: ${message}`;
+
 // 全ツールを登録
 const toolRegistry: Record<string, ToolDefinition> = {
   read_file: readFileTool,
@@ -17,32 +20,41 @@ const toolRegistry: Record<string, ToolDefinition> = {
   attempt_completion: attemptCompletionTool,
 };
 
-// ツール定義の配列を取得
+/**
+ * ツール定義の配列を取得
+ */
 export function getToolDefinitions(): Anthropic.Tool[] {
   return Object.values(toolRegistry).map((tool) => tool.definition);
 }
 
-// ツールを実行
-export async function executeTool(toolName: string, input: any): Promise<string> {
+/**
+ * ツールを実行
+ */
+export async function executeTool(
+  toolName: string,
+  input: Record<string, unknown>
+): Promise<string> {
   console.log(`   入力: ${JSON.stringify(input)}`);
 
   const tool = toolRegistry[toolName];
   if (!tool) {
-    return `エラー: 不明なツール '${toolName}'`;
+    return ERROR_UNKNOWN_TOOL(toolName);
   }
 
   try {
     return await tool.execute(input);
-  } catch (error) {
+  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.log(`   エラー: ${errorMessage}`);
-    return `エラー: ${errorMessage}`;
+    return ERROR_GENERIC(errorMessage);
   }
 }
 
-// ツール名の一覧を取得
+/**
+ * ツール名の一覧を取得
+ */
 export function getToolNames(): string[] {
   return Object.keys(toolRegistry);
 }
 
-export { ToolDefinition } from "./types";
+export type { ToolDefinition } from "./types";

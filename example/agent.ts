@@ -3,20 +3,37 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import * as readline from "readline";
+import * as readline from "readline/promises";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
 import { getToolDefinitions, executeTool, getToolNames } from "./tools";
 
+// 定数
+const MODEL_NAME = "claude-sonnet-4-5-20250929";
+const MAX_TOKENS = 4096;
+const MAX_ITERATIONS = 25;
+const SEPARATOR_LENGTH = 60;
+const WORKSPACE_DIR = path.join(process.cwd(), "workspace");
+const SAMPLE_FILE_NAME = "example.txt";
+const SAMPLE_FILE_CONTENT = "Hello, this is an example file!\nYou can read and modify this file.";
+const EXIT_COMMANDS = ["exit", "quit", ""];
+const ATTEMPT_COMPLETION_TOOL_NAME = "attempt_completion";
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const MODEL = "claude-sonnet-4-5-20250929";
-const WORKSPACE = path.join(process.cwd(), "workspace");
-
 type Message = Anthropic.MessageParam;
+
+interface AttemptCompletionInput {
+  result: string;
+}
+
+interface ProcessResult {
+  shouldContinue: boolean;
+  isCompleted: boolean;
+}
 
 /**
  * ユーザー入力を取得
@@ -27,32 +44,29 @@ async function getUserInput(prompt: string = "入力"): Promise<string> {
     output: process.stdout,
   });
 
-  return new Promise((resolve) => {
-    rl.question(`\n${prompt}: `, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
+  const answer = await rl.question(`\n${prompt}: `);
+  rl.close();
+  return answer;
 }
 
 /**
  * Claude APIを呼び出し
  */
-async function callClaude(messages: Message[]): Promise<Anthropic.Message> {
+async function callClaude(messages: readonly Message[]): Promise<Anthropic.Message> {
   console.log("\n🤖 LLMの応答:");
 
   const stream = anthropic.messages.stream({
-    model: MODEL,
-    max_tokens: 4096,
-    messages: messages,
+    model: MODEL_NAME,
+    max_tokens: MAX_TOKENS,
+    messages: [...messages],
     tools: getToolDefinitions(),
   });
 
-  stream.on("text", (text) => {
+  stream.on("text", (text: string): void => {
     process.stdout.write(text);
   });
 
-  stream.on("contentBlock", (block) => {
+  stream.on("contentBlock", (block: Anthropic.ContentBlock): void => {
     if (block.type === "tool_use") {
       console.log(`\n🔧 ツール使用: ${block.name}`);
     }
@@ -65,128 +79,178 @@ async function callClaude(messages: Message[]): Promise<Anthropic.Message> {
 }
 
 /**
+ * ツール使用結果を処理
+ */
+async function processToolUse(
+  toolUse: Anthropic.ToolUseBlock
+): Promise<{ toolResult: Anthropic.ToolResultBlockParam; isCompleted: boolean }> {
+  if (toolUse.name === ATTEMPT_COMPLETION_TOOL_NAME) {
+    const input = toolUse.input as AttemptCompletionInput;
+    console.log("\n✅ タスク完了:", input.result);
+    return {
+      toolResult: {
+        type: "tool_result",
+        tool_use_id: toolUse.id,
+        content: "タスク完了を確認しました",
+      },
+      isCompleted: true,
+    };
+  }
+
+  const result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>);
+  return {
+    toolResult: {
+      type: "tool_result",
+      tool_use_id: toolUse.id,
+      content: result,
+    },
+    isCompleted: false,
+  };
+}
+
+/**
  * LLMの応答を処理
  */
-async function processResponse(response: Anthropic.Message, messages: Message[]): Promise<boolean> {
+async function processResponse(
+  response: Anthropic.Message,
+  messages: Message[]
+): Promise<ProcessResult> {
   messages.push({
     role: "assistant",
     content: response.content,
   });
 
   if (response.stop_reason === "end_turn") {
-    return false;
+    return { shouldContinue: false, isCompleted: false };
   }
 
   const toolUses = response.content.filter(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
   );
 
-  if (toolUses.length > 0) {
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    let isCompleted = false;
-
-    for (const toolUse of toolUses) {
-      if (toolUse.name === "attempt_completion") {
-        const result = (toolUse.input as { result: string }).result;
-        console.log("\n✅ タスク完了:", result);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: "タスク完了を確認しました",
-        });
-        isCompleted = true;
-      } else {
-        const result = await executeTool(toolUse.name, toolUse.input);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolUse.id,
-          content: result,
-        });
-      }
-    }
-
-    if (toolResults.length > 0) {
-      messages.push({
-        role: "user",
-        content: toolResults,
-      });
-    }
-
-    if (isCompleted) {
-      return false;
-    }
+  if (toolUses.length === 0) {
+    return { shouldContinue: true, isCompleted: false };
   }
 
-  return true;
+  const processedResults = await Promise.all(toolUses.map(processToolUse));
+  const toolResults = processedResults.map((r) => r.toolResult);
+  const hasCompletion = processedResults.some((r) => r.isCompleted);
+
+  messages.push({
+    role: "user",
+    content: toolResults,
+  });
+
+  return {
+    shouldContinue: !hasCompletion,
+    isCompleted: hasCompletion,
+  };
+}
+
+/**
+ * 会話ループを実行（再帰的）
+ */
+async function runConversationLoop(
+  messages: Message[],
+  iterationCount: number
+): Promise<void> {
+  if (iterationCount >= MAX_ITERATIONS) {
+    console.log("\n⚠️ 最大イテレーション数に達しました");
+    return;
+  }
+
+  const response = await callClaude(messages);
+  const { shouldContinue } = await processResponse(response, messages);
+
+  if (shouldContinue) {
+    await runConversationLoop(messages, iterationCount + 1);
+  }
+}
+
+/**
+ * 終了コマンドかどうかを判定
+ */
+function isExitCommand(input: string): boolean {
+  const normalizedInput = input.trim().toLowerCase();
+  return EXIT_COMMANDS.includes(normalizedInput);
 }
 
 /**
  * ワークスペース初期化
  */
-async function initializeWorkspace() {
-  if (!existsSync(WORKSPACE)) {
-    await mkdir(WORKSPACE, { recursive: true });
-    console.log(`📁 ワークスペースを作成しました: ${WORKSPACE}`);
-
-    await writeFile(
-      path.join(WORKSPACE, "example.txt"),
-      "Hello, this is an example file!\nYou can read and modify this file.",
-      "utf-8"
-    );
-    console.log("📄 サンプルファイル（example.txt）を作成しました");
+async function initializeWorkspace(): Promise<void> {
+  if (existsSync(WORKSPACE_DIR)) {
+    return;
   }
+
+  await mkdir(WORKSPACE_DIR, { recursive: true });
+  console.log(`📁 ワークスペースを作成しました: ${WORKSPACE_DIR}`);
+
+  await writeFile(
+    path.join(WORKSPACE_DIR, SAMPLE_FILE_NAME),
+    SAMPLE_FILE_CONTENT,
+    "utf-8"
+  );
+  console.log(`📄 サンプルファイル（${SAMPLE_FILE_NAME}）を作成しました`);
+}
+
+/**
+ * ヘッダーを表示
+ */
+function displayHeader(): void {
+  const separator = "=".repeat(SEPARATOR_LENGTH);
+  console.log(separator);
+  console.log("AI Agent");
+  console.log(separator);
+  console.log("\n利用可能なツール:");
+  getToolNames().forEach((name) => {
+    console.log(`  • ${name}`);
+  });
+  console.log("\n終了するには 'exit' または 'quit' と入力してください");
+}
+
+/**
+ * フッターを表示
+ */
+function displayFooter(): void {
+  const separator = "=".repeat(SEPARATOR_LENGTH);
+  console.log("\n" + separator);
+  console.log("セッション終了");
+  console.log(separator);
+}
+
+/**
+ * メインの会話ループ
+ */
+async function mainLoop(messages: Message[]): Promise<void> {
+  const input = await getUserInput();
+
+  if (isExitCommand(input)) {
+    console.log("\n👋 終了します");
+    return;
+  }
+
+  messages.push({
+    role: "user",
+    content: input,
+  });
+
+  const initialIterationCount = 0;
+  await runConversationLoop(messages, initialIterationCount);
+  await mainLoop(messages);
 }
 
 /**
  * メイン関数
  */
-async function main() {
-  console.log("=".repeat(60));
-  console.log("AI Agent");
-  console.log("=".repeat(60));
-  console.log("\n利用可能なツール:");
-  for (const name of getToolNames()) {
-    console.log(`  • ${name}`);
-  }
-  console.log("\n終了するには 'exit' または 'quit' と入力してください");
+async function main(): Promise<void> {
+  displayHeader();
 
   try {
     await initializeWorkspace();
-
     const messages: Message[] = [];
-
-    while (true) {
-      const input = await getUserInput();
-
-      if (!input.trim() || input.toLowerCase() === "exit" || input.toLowerCase() === "quit") {
-        console.log("\n👋 終了します");
-        break;
-      }
-
-      messages.push({
-        role: "user",
-        content: input,
-      });
-
-      let shouldContinue = true;
-      let iterationCount = 0;
-      const MAX_ITERATIONS = 25;
-
-      while (shouldContinue && iterationCount < MAX_ITERATIONS) {
-        iterationCount++;
-
-        const response = await callClaude(messages);
-        shouldContinue = await processResponse(response, messages);
-      }
-
-      if (iterationCount >= MAX_ITERATIONS) {
-        console.log("\n⚠️ 最大イテレーション数に達しました");
-      }
-    }
-
-    console.log("\n" + "=".repeat(60));
-    console.log("セッション終了");
-    console.log("=".repeat(60));
+    await mainLoop(messages);
+    displayFooter();
   } catch (error) {
     console.error("\n❌ エラーが発生しました:", error);
     if (error instanceof Error) {

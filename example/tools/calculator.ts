@@ -1,5 +1,13 @@
 import { ToolDefinition } from "./types";
 
+interface CalculatorInput {
+  expression: string;
+}
+
+const ALLOWED_CHARACTERS_PATTERN = /^[0-9+\-*/().\s]+$/;
+const ERROR_INVALID_CHARACTERS = "エラー: 使用できない文字が含まれています";
+const ERROR_GENERIC = (message: string): string => `エラー: ${message}`;
+
 export const calculatorTool: ToolDefinition = {
   definition: {
     name: "calculator",
@@ -16,20 +24,21 @@ export const calculatorTool: ToolDefinition = {
     },
   },
 
-  async execute(input: { expression: string }): Promise<string> {
-    const expression = input.expression;
+  async execute(rawInput: Record<string, unknown>): Promise<string> {
+    const input = rawInput as unknown as CalculatorInput;
+    const { expression } = input;
 
-    // 基本的な安全チェック
-    if (!/^[0-9+\-*/().\s]+$/.test(expression)) {
-      return "エラー: 使用できない文字が含まれています";
+    if (!ALLOWED_CHARACTERS_PATTERN.test(expression)) {
+      return ERROR_INVALID_CHARACTERS;
     }
 
     try {
-      const result = eval(expression);
+      const result = eval(expression) as number;
       console.log(`   結果: ${result}`);
       return String(result);
-    } catch (error: any) {
-      return `エラー: ${error.message}`;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return ERROR_GENERIC(message);
     }
   },
 };

@@ -1,5 +1,9 @@
 import { ToolDefinition } from "./types";
 
+interface AttemptCompletionInput {
+  result: string;
+}
+
 export const attemptCompletionTool: ToolDefinition = {
   definition: {
     name: "attempt_completion",
@@ -16,7 +20,8 @@ export const attemptCompletionTool: ToolDefinition = {
     },
   },
 
-  async execute(input: { result: string }): Promise<string> {
+  async execute(rawInput: Record<string, unknown>): Promise<string> {
+    const input = rawInput as unknown as AttemptCompletionInput;
     // このツールは特別扱いされるため、実行関数は呼ばれない
     return input.result;
   },
