@@ -119,28 +119,30 @@ export class ConversationHistory implements MessageHistory {
   }
 
   filter(options: HistoryFilterOptions): readonly LabeledMessage[] {
-    return this.messages.filter((msg) => {
-      if (options.labels && !options.labels.includes(msg.metadata.label)) {
-        return false;
-      }
-      if (options.priorities && !options.priorities.includes(msg.metadata.priority)) {
-        return false;
-      }
-      if (options.tags && options.tags.length > 0) {
-        const hasTags = options.tags.some((tag) => msg.metadata.tags?.includes(tag));
-        if (!hasTags) return false;
-      }
-      if (options.afterTimestamp && msg.metadata.timestamp < options.afterTimestamp) {
-        return false;
-      }
-      if (options.beforeTimestamp && msg.metadata.timestamp > options.beforeTimestamp) {
-        return false;
-      }
-      if (options.excludeIds && options.excludeIds.includes(msg.id)) {
-        return false;
-      }
-      return true;
-    }).slice(0, options.limit);
+    return this.messages
+      .filter((msg) => {
+        if (options.labels && !options.labels.includes(msg.metadata.label)) {
+          return false;
+        }
+        if (options.priorities && !options.priorities.includes(msg.metadata.priority)) {
+          return false;
+        }
+        if (options.tags && options.tags.length > 0) {
+          const hasTags = options.tags.some((tag) => msg.metadata.tags?.includes(tag));
+          if (!hasTags) return false;
+        }
+        if (options.afterTimestamp && msg.metadata.timestamp < options.afterTimestamp) {
+          return false;
+        }
+        if (options.beforeTimestamp && msg.metadata.timestamp > options.beforeTimestamp) {
+          return false;
+        }
+        if (options.excludeIds && options.excludeIds.includes(msg.id)) {
+          return false;
+        }
+        return true;
+      })
+      .slice(0, options.limit);
   }
 
   toBaseMessages(): BaseMessage[] {
@@ -155,7 +157,12 @@ export class ConversationHistory implements MessageHistory {
   }
 
   summarize(options: HistorySummaryOptions): LabeledMessage[] {
-    const { maxMessages, maxTokens, preserveLabels = [], preservePriorities = ["critical", "high"] } = options;
+    const {
+      maxMessages,
+      maxTokens,
+      preserveLabels = [],
+      preservePriorities = ["critical", "high"],
+    } = options;
 
     // 保持すべきメッセージを分離
     const preservedMessages = this.messages.filter(
@@ -190,9 +197,7 @@ export class ConversationHistory implements MessageHistory {
     }
 
     // 時系列順に並び替え
-    return result.sort(
-      (a, b) => a.metadata.timestamp.getTime() - b.metadata.timestamp.getTime()
-    );
+    return result.sort((a, b) => a.metadata.timestamp.getTime() - b.metadata.timestamp.getTime());
   }
 
   updatePriority(id: string, priority: MessagePriority): void {

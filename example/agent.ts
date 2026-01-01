@@ -6,13 +6,7 @@ import * as readline from "readline/promises";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import {
-  LLMProvider,
-  LLMResponse,
-  ContentBlock,
-  ToolUse,
-  StreamEvent,
-} from "./llm";
+import { LLMProvider, LLMResponse, ContentBlock, ToolUse, StreamEvent } from "./llm";
 import { AnthropicProvider } from "./llm/anthropic";
 import { ConversationHistory } from "./history";
 import { getToolDefinitions, executeTool, getToolNames } from "./tools";
@@ -86,10 +80,7 @@ function handleStreamEvent(event: StreamEvent): void {
 /**
  * LLMを呼び出し
  */
-async function callLLM(
-  provider: LLMProvider,
-  history: ConversationHistory
-): Promise<LLMResponse> {
+async function callLLM(provider: LLMProvider, history: ConversationHistory): Promise<LLMResponse> {
   console.log("\n🤖 LLMの応答:");
 
   const tools = getToolDefinitions();
@@ -147,9 +138,7 @@ async function processResponse(
   }
 
   // ツール結果を処理
-  const results = await Promise.all(
-    toolUses.map((toolUse) => processToolUse(toolUse, history))
-  );
+  const results = await Promise.all(toolUses.map((toolUse) => processToolUse(toolUse, history)));
   const hasCompletion = results.some((r) => r.isCompleted);
 
   return {
@@ -198,11 +187,7 @@ async function initializeWorkspace(): Promise<void> {
   await mkdir(WORKSPACE_DIR, { recursive: true });
   console.log(`📁 ワークスペースを作成しました: ${WORKSPACE_DIR}`);
 
-  await writeFile(
-    path.join(WORKSPACE_DIR, SAMPLE_FILE_NAME),
-    SAMPLE_FILE_CONTENT,
-    "utf-8"
-  );
+  await writeFile(path.join(WORKSPACE_DIR, SAMPLE_FILE_NAME), SAMPLE_FILE_CONTENT, "utf-8");
   console.log(`📄 サンプルファイル（${SAMPLE_FILE_NAME}）を作成しました`);
 }
 
@@ -234,10 +219,7 @@ function displayFooter(): void {
 /**
  * メインの会話ループ
  */
-async function mainLoop(
-  provider: LLMProvider,
-  history: ConversationHistory
-): Promise<void> {
+async function mainLoop(provider: LLMProvider, history: ConversationHistory): Promise<void> {
   const input = await getUserInput();
 
   // Ctrl+C による中断

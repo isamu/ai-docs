@@ -355,9 +355,7 @@ describe("ConversationHistory", () => {
       const summarized = history.summarize({ maxMessages: 3 });
 
       // Should include user_input (high) and error (high)
-      const highPriorityCount = summarized.filter(
-        (m) => m.metadata.priority === "high"
-      ).length;
+      const highPriorityCount = summarized.filter((m) => m.metadata.priority === "high").length;
       assert.ok(highPriorityCount >= 2);
     });
 

@@ -11,7 +11,8 @@ interface ReadFileInput {
 const ERROR_MESSAGES = {
   OUTSIDE_WORKSPACE: "エラー: ワークスペース外のファイルにはアクセスできません",
   FILE_NOT_FOUND: (filePath: string): string => `エラー: ファイルが見つかりません: ${filePath}`,
-  NO_PERMISSION: (filePath: string): string => `エラー: ファイルの読み取り権限がありません: ${filePath}`,
+  NO_PERMISSION: (filePath: string): string =>
+    `エラー: ファイルの読み取り権限がありません: ${filePath}`,
   GENERIC: (message: string): string => `エラー: ${message}`,
 } as const;
 

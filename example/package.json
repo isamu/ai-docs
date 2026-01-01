@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "description": "AI Agent with modular tools, LLM abstraction, and history management",
   "main": "agent.ts",
+  "type": "module",
   "scripts": {
     "start": "tsx --env-file .env agent.ts",
     "dev": "tsx watch agent.ts",
     "test": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [
     "ai",
@@ -22,8 +27,13 @@
     "@anthropic-ai/sdk": "^0.32.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^20.10.6",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.7.4",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
-    "@types/node": "^20.10.6"
+    "typescript-eslint": "^8.51.0"
   }
 }

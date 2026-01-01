@@ -1,7 +1,5 @@
 import { ToolDefinition } from "./types";
 
-type EmptyInput = Record<string, never>;
-
 const TIMEZONE = "Asia/Tokyo";
 const LOCALE = "ja-JP";
 

@@ -27,9 +27,7 @@ export interface ToolResult {
 }
 
 // コンテンツブロック
-export type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; toolUse: ToolUse };
+export type ContentBlock = { type: "text"; text: string } | { type: "tool_use"; toolUse: ToolUse };
 
 // 停止理由
 export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "stop_sequence";

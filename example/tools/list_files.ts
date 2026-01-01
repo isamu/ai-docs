@@ -19,7 +19,8 @@ function isFileSystemError(error: unknown): error is FileSystemError {
 
 const ERROR_MESSAGES = {
   OUTSIDE_WORKSPACE: "エラー: ワークスペース外にはアクセスできません",
-  DIRECTORY_NOT_FOUND: (dirPath: string): string => `エラー: ディレクトリが見つかりません: ${dirPath}`,
+  DIRECTORY_NOT_FOUND: (dirPath: string): string =>
+    `エラー: ディレクトリが見つかりません: ${dirPath}`,
   GENERIC: (message: string): string => `エラー: ${message}`,
 } as const;
 
@@ -41,9 +42,7 @@ export const listFilesTool: ToolDefinition = {
 
   async execute(rawInput: Record<string, unknown>): Promise<string> {
     const input = rawInput as ListFilesInput;
-    const dirPath = input.path
-      ? path.resolve(WORKSPACE_DIR, input.path)
-      : WORKSPACE_DIR;
+    const dirPath = input.path ? path.resolve(WORKSPACE_DIR, input.path) : WORKSPACE_DIR;
 
     if (!dirPath.startsWith(WORKSPACE_DIR)) {
       return ERROR_MESSAGES.OUTSIDE_WORKSPACE;

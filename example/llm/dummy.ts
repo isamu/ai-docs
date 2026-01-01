@@ -241,8 +241,7 @@ export class DummyProvider implements LLMProvider {
     }
 
     const textBlocks = message.content.filter(
-      (block): block is ContentBlock & { type: "text" } =>
-        "type" in block && block.type === "text"
+      (block): block is ContentBlock & { type: "text" } => "type" in block && block.type === "text"
     );
 
     return textBlocks.map((block) => block.text).join(" ") || null;

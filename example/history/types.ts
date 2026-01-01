@@ -2,17 +2,20 @@
  * Message History Types with Labels for Context Management
  */
 
-import { BaseMessage, ContentBlock, ToolResult, MessageRole } from "../llm/types";
+import { BaseMessage, ContentBlock, ToolResult } from "../llm/types";
+
+// Re-export for use in interface
+export type { ToolResult };
 
 // メッセージラベル（コンテキスト管理用）
 export type MessageLabel =
-  | "user_input"           // ユーザーからの入力
-  | "assistant_response"   // アシスタントの応答
-  | "tool_call"            // ツール呼び出し
-  | "tool_result"          // ツール結果
-  | "system_context"       // システムコンテキスト
-  | "task_completion"      // タスク完了
-  | "error";               // エラー
+  | "user_input" // ユーザーからの入力
+  | "assistant_response" // アシスタントの応答
+  | "tool_call" // ツール呼び出し
+  | "tool_result" // ツール結果
+  | "system_context" // システムコンテキスト
+  | "task_completion" // タスク完了
+  | "error"; // エラー
 
 // メッセージの優先度（コンテキスト圧縮時の判断用）
 export type MessagePriority = "critical" | "high" | "medium" | "low";
@@ -22,11 +25,11 @@ export interface MessageMetadata {
   label: MessageLabel;
   priority: MessagePriority;
   timestamp: Date;
-  toolName?: string;           // ツール関連の場合のツール名
-  toolUseId?: string;          // ツール使用ID
-  tags?: string[];             // カスタムタグ
-  tokenCount?: number;         // トークン数（推定）
-  parentMessageId?: string;    // 親メッセージID（関連付け用）
+  toolName?: string; // ツール関連の場合のツール名
+  toolUseId?: string; // ツール使用ID
+  tags?: string[]; // カスタムタグ
+  tokenCount?: number; // トークン数（推定）
+  parentMessageId?: string; // 親メッセージID（関連付け用）
 }
 
 // ラベル付きメッセージ
