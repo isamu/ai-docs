@@ -99,3 +99,39 @@ export interface ContextConfig {
 }
 
 export const DEFAULT_MODE: AgentMode = "conversation";
+
+// ========== モードスタック ==========
+
+export interface ModeStackEntry {
+  mode: AgentMode;
+  enteredAt: Date;
+  sessionId?: string; // このモードに紐づくタスクセッション
+}
+
+// ========== タスクセッション ==========
+
+export type SessionStatus = "active" | "suspended" | "completed" | "discarded";
+
+export interface TaskSession {
+  id: string;
+  taskType: string; // "mulmo", "codegen", etc.
+  status: SessionStatus;
+  state: unknown; // タスク固有の状態
+  createdAt: Date;
+  updatedAt: Date;
+  summary?: string; // 完了時のサマリー
+}
+
+// セッション完了時のオプション
+export interface SessionCompleteOptions {
+  summary?: string; // カスタムサマリー（省略時は自動生成）
+}
+
+// ========== 状態表示 ==========
+
+export interface ContextStatus {
+  currentMode: AgentMode;
+  modeStackDepth: number;
+  activeTask: { id: string; type: string; status: SessionStatus } | null;
+  suspendedTasks: Array<{ id: string; type: string; summary: string }>;
+}

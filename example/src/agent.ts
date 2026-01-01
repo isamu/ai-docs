@@ -261,7 +261,11 @@ function handleModeCommand(input: string, context: AgentContext): boolean {
     return true;
   }
 
-  context.setMode(modeName);
+  // ベースモードに戻してから新しいモードをpush
+  context.modeManager.popToBase();
+  if (modeName !== "conversation") {
+    context.pushMode(modeName);
+  }
   const modeConfig = context.getModeConfig();
   console.log(`\n📋 モード変更: ${modeConfig.displayName}`);
   console.log(`   ${modeConfig.description}`);
