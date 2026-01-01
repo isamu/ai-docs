@@ -49,15 +49,21 @@ function createLLMProvider(): LLMProvider {
 /**
  * ユーザー入力を取得
  */
-async function getUserInput(prompt: string = "入力"): Promise<string> {
+async function getUserInput(prompt: string = "入力"): Promise<string | null> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
-  const answer = await rl.question(`\n${prompt}: `);
-  rl.close();
-  return answer;
+  try {
+    const answer = await rl.question(`\n${prompt}: `);
+    return answer;
+  } catch {
+    // Ctrl+C による中断
+    return null;
+  } finally {
+    rl.close();
+  }
 }
 
 /**
@@ -233,6 +239,12 @@ async function mainLoop(
   history: ConversationHistory
 ): Promise<void> {
   const input = await getUserInput();
+
+  // Ctrl+C による中断
+  if (input === null) {
+    console.log("\n👋 終了します");
+    return;
+  }
 
   if (isExitCommand(input)) {
     console.log("\n👋 終了します");
