@@ -4,7 +4,7 @@
   "description": "Step 3: ファイル操作 - 読み書き、一覧表示",
   "main": "agent.ts",
   "scripts": {
-    "start": "tsx agent.ts",
+    "start": "tsx --env-file .env agent.ts",
     "dev": "tsx watch agent.ts"
   },
   "keywords": [

@@ -249,50 +249,29 @@ async function executeTool(toolName: string, input: any): Promise<string> {
 async function callClaude(messages: Message[]): Promise<Anthropic.Message> {
   console.log("\n🤖 LLMの応答:");
 
-  const stream = await anthropic.messages.create({
+  const stream = anthropic.messages.stream({
     model: MODEL,
     max_tokens: 4096,
     messages: messages,
     tools: TOOLS,
-    stream: true,
   });
 
-  let fullResponse: Anthropic.Message | null = null;
-  let currentText = "";
+  // ストリーミング出力
+  stream.on("text", (text) => {
+    process.stdout.write(text);
+  });
 
-  for await (const event of stream) {
-    if (event.type === "message_start") {
-      fullResponse = event.message;
-    } else if (event.type === "content_block_start") {
-      if (event.content_block.type === "text") {
-        currentText = "";
-      } else if (event.content_block.type === "tool_use") {
-        console.log(`🔧 ツール使用: ${event.content_block.name}`);
-      }
-    } else if (event.type === "content_block_delta") {
-      if (event.delta.type === "text_delta") {
-        currentText += event.delta.text;
-        process.stdout.write(event.delta.text);
-      }
-    } else if (event.type === "content_block_stop") {
-      if (currentText) {
-        console.log();
-      }
-    } else if (event.type === "message_delta") {
-      if (fullResponse && event.delta.stop_reason) {
-        fullResponse.stop_reason = event.delta.stop_reason;
-      }
-      if (fullResponse && event.usage) {
-        fullResponse.usage.output_tokens = event.usage.output_tokens;
-      }
+  stream.on("contentBlock", (block) => {
+    if (block.type === "tool_use") {
+      console.log(`\n🔧 ツール使用: ${block.name}`);
     }
-  }
+  });
 
-  if (!fullResponse) {
-    throw new Error("APIからの応答を取得できませんでした");
-  }
+  // 最終メッセージを取得
+  const response = await stream.finalMessage();
+  console.log(); // 改行
 
-  return fullResponse;
+  return response;
 }
 
 /**
@@ -305,6 +284,11 @@ async function processResponse(response: Anthropic.Message, messages: Message[])
     role: "assistant",
     content: response.content,
   });
+
+  // ツール呼び出しがない場合（通常の会話応答）はループを終了
+  if (response.stop_reason === "end_turn") {
+    return false;
+  }
 
   // tool_useブロックを探す
   const toolUses = response.content.filter(
@@ -339,7 +323,7 @@ async function processResponse(response: Anthropic.Message, messages: Message[])
     }
   }
 
-  return true; // ループ継続
+  return true; // ツール結果を返した場合はループ継続
 }
 
 /**
@@ -373,45 +357,49 @@ async function main() {
   console.log("  • list_files - ファイル一覧");
   console.log("  • calculator - 計算");
   console.log("  • get_current_time - 時刻取得");
+  console.log("\n終了するには 'exit' または 'quit' と入力してください");
 
   try {
     // ワークスペース初期化
     await initializeWorkspace();
 
-    const task = await getUserInput();
+    // 会話履歴を保持
+    const messages: Message[] = [];
 
-    if (!task.trim()) {
-      console.log("❌ タスクが入力されませんでした");
-      return;
-    }
+    // メインの会話ループ
+    while (true) {
+      const input = await getUserInput();
 
-    const messages: Message[] = [
-      {
+      // 終了コマンドのチェック
+      if (!input.trim() || input.toLowerCase() === "exit" || input.toLowerCase() === "quit") {
+        console.log("\n👋 終了します");
+        break;
+      }
+
+      // ユーザーメッセージを履歴に追加
+      messages.push({
         role: "user",
-        content: task,
-      },
-    ];
+        content: input,
+      });
 
-    console.log("\n🚀 タスク実行開始...");
+      let shouldContinue = true;
+      let iterationCount = 0;
+      const MAX_ITERATIONS = 25;
 
-    let shouldContinue = true;
-    let iterationCount = 0;
-    const MAX_ITERATIONS = 25;
+      while (shouldContinue && iterationCount < MAX_ITERATIONS) {
+        iterationCount++;
 
-    while (shouldContinue && iterationCount < MAX_ITERATIONS) {
-      iterationCount++;
-      console.log(`\n--- イテレーション ${iterationCount} ---`);
+        const response = await callClaude(messages);
+        shouldContinue = await processResponse(response, messages);
+      }
 
-      const response = await callClaude(messages);
-      shouldContinue = await processResponse(response, messages);
-    }
-
-    if (iterationCount >= MAX_ITERATIONS) {
-      console.log("\n⚠️ 最大イテレーション数に達しました");
+      if (iterationCount >= MAX_ITERATIONS) {
+        console.log("\n⚠️ 最大イテレーション数に達しました");
+      }
     }
 
     console.log("\n" + "=".repeat(60));
-    console.log("実行完了");
+    console.log("セッション終了");
     console.log("=".repeat(60));
   } catch (error) {
     console.error("\n❌ エラーが発生しました:", error);
