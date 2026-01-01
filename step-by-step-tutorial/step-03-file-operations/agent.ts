@@ -116,7 +116,7 @@ type Message = Anthropic.MessageParam;
 /**
  * ユーザー入力を取得
  */
-async function getUserInput(prompt: string = "タスクを入力してください"): Promise<string> {
+async function getUserInput(prompt: string = "入力"): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -297,12 +297,18 @@ async function processResponse(response: Anthropic.Message, messages: Message[])
 
   if (toolUses.length > 0) {
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    let isCompleted = false;
 
     for (const toolUse of toolUses) {
       if (toolUse.name === "attempt_completion") {
         const result = (toolUse.input as { result: string }).result;
         console.log("\n✅ タスク完了:", result);
-        return false; // ループ終了
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolUse.id,
+          content: "タスク完了を確認しました",
+        });
+        isCompleted = true;
       } else {
         // 他のツールを実行（非同期対応）
         const result = await executeTool(toolUse.name, toolUse.input);
@@ -320,6 +326,10 @@ async function processResponse(response: Anthropic.Message, messages: Message[])
         role: "user",
         content: toolResults,
       });
+    }
+
+    if (isCompleted) {
+      return false; // タスク完了でループ終了
     }
   }
 

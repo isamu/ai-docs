@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Step 2: 最小限のツール - 計算と時刻取得",
   "main": "agent.ts",
-  "scripts": {
-    "start": "tsx agent.ts",
+  "scripts": { 
+    "start": "tsx --env-file .env agent.ts",
     "dev": "tsx watch agent.ts"
   },
   "keywords": [
