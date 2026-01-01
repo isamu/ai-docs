@@ -106,7 +106,8 @@ export class AnthropicProvider implements LLMProvider {
   async call(
     messages: BaseMessage[],
     tools: ToolSchema[],
-    onStream?: StreamCallback
+    onStream?: StreamCallback,
+    systemPrompt?: string
   ): Promise<LLMResponse> {
     const formattedMessages = this.formatMessages(messages);
     const formattedTools = this.formatTools(tools);
@@ -116,6 +117,7 @@ export class AnthropicProvider implements LLMProvider {
       max_tokens: this.maxTokens,
       messages: formattedMessages,
       tools: formattedTools,
+      ...(systemPrompt && { system: systemPrompt }),
     });
 
     if (onStream) {

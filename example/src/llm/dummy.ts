@@ -186,7 +186,8 @@ export class DummyProvider implements LLMProvider {
   async call(
     messages: BaseMessage[],
     _tools: ToolSchema[],
-    onStream?: StreamCallback
+    onStream?: StreamCallback,
+    _systemPrompt?: string
   ): Promise<LLMResponse> {
     const lastMessage = messages[messages.length - 1];
     const response = this.findResponse(lastMessage);

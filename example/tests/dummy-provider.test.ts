@@ -10,7 +10,7 @@ import {
   createToolUseResponse,
   BaseMessage,
   LLMResponse,
-} from "../llm";
+} from "../src/llm";
 
 describe("DummyProvider", () => {
   describe("constructor", () => {

@@ -1,5 +1,5 @@
 /**
- * AI Agent with modular tools, LLM abstraction, and history management
+ * AI Agent with modular tools, LLM abstraction, context and mode management
  */
 
 import * as readline from "readline/promises";
@@ -8,13 +8,12 @@ import path from "path";
 import { existsSync } from "fs";
 import { LLMProvider, LLMResponse, ContentBlock, ToolUse, StreamEvent } from "./llm";
 import { AnthropicProvider } from "./llm/anthropic";
-import { ConversationHistory } from "./history";
-import { getToolDefinitions, executeTool, getToolNames } from "./tools";
+import { AgentContext, AgentMode } from "./context";
+import { executeTool } from "./tools";
 
 // 定数
 const MODEL_NAME = "claude-sonnet-4-5-20250929";
 const MAX_TOKENS = 4096;
-const MAX_ITERATIONS = 25;
 const SEPARATOR_LENGTH = 60;
 const WORKSPACE_DIR = path.join(process.cwd(), "workspace");
 const SAMPLE_FILE_NAME = "example.txt";
@@ -63,30 +62,35 @@ async function getUserInput(prompt: string = "入力"): Promise<string | null> {
 /**
  * ストリームイベントを処理
  */
-function handleStreamEvent(event: StreamEvent): void {
-  switch (event.type) {
-    case "text":
-      process.stdout.write(event.text ?? "");
-      break;
-    case "tool_use_start":
-      console.log(`\n🔧 ツール使用: ${event.toolName}`);
-      break;
-    case "done":
-      console.log();
-      break;
-  }
+function createStreamHandler(): (event: StreamEvent) => void {
+  return (event: StreamEvent): void => {
+    switch (event.type) {
+      case "text":
+        process.stdout.write(event.text ?? "");
+        break;
+      case "tool_use_start":
+        console.log(`\n🔧 ツール使用: ${event.toolName}`);
+        break;
+      case "done":
+        console.log();
+        break;
+    }
+  };
 }
 
 /**
  * LLMを呼び出し
  */
-async function callLLM(provider: LLMProvider, history: ConversationHistory): Promise<LLMResponse> {
+async function callLLM(provider: LLMProvider, context: AgentContext): Promise<LLMResponse> {
   console.log("\n🤖 LLMの応答:");
 
-  const tools = getToolDefinitions();
-  const messages = history.toBaseMessages();
+  const tools = context.getEnabledTools();
+  const messages = context.toBaseMessages();
+  const systemPrompt = context.getSystemPrompt();
 
-  return provider.call(messages, tools, handleStreamEvent);
+  const response = await provider.call(messages, tools, createStreamHandler(), systemPrompt);
+
+  return response;
 }
 
 /**
@@ -94,17 +98,33 @@ async function callLLM(provider: LLMProvider, history: ConversationHistory): Pro
  */
 async function processToolUse(
   toolUse: ToolUse,
-  history: ConversationHistory
+  context: AgentContext
 ): Promise<{ isCompleted: boolean }> {
+  // ツールが現在のモードで使用可能か確認
+  if (!context.isToolEnabled(toolUse.name)) {
+    const errorMessage = `ツール "${toolUse.name}" は現在のモード "${context.getMode()}" では使用できません`;
+    console.log(`\n⚠️ ${errorMessage}`);
+    context.addToolResult(toolUse.name, toolUse.id, errorMessage);
+    return { isCompleted: false };
+  }
+
+  // 制約チェック
+  if (toolUse.name === "write_file" && !context.canWriteFiles()) {
+    const errorMessage = "現在のモードではファイル書き込みが許可されていません";
+    console.log(`\n⚠️ ${errorMessage}`);
+    context.addToolResult(toolUse.name, toolUse.id, errorMessage);
+    return { isCompleted: false };
+  }
+
   if (toolUse.name === ATTEMPT_COMPLETION_TOOL_NAME) {
     const input = toolUse.input as unknown as AttemptCompletionInput;
     console.log("\n✅ タスク完了:", input.result);
-    history.addTaskCompletion(input.result);
+    context.addTaskCompletion(input.result);
     return { isCompleted: true };
   }
 
   const result = await executeTool(toolUse.name, toolUse.input);
-  history.addToolResult(toolUse.name, toolUse.id, result);
+  context.addToolResult(toolUse.name, toolUse.id, result);
   return { isCompleted: false };
 }
 
@@ -122,10 +142,10 @@ function extractToolUses(content: ContentBlock[]): ToolUse[] {
  */
 async function processResponse(
   response: LLMResponse,
-  history: ConversationHistory
+  context: AgentContext
 ): Promise<ProcessResult> {
   // アシスタントの応答を履歴に追加
-  history.addAssistantMessage(response.content);
+  context.addAssistantMessage(response.content);
 
   if (response.stopReason === "end_turn") {
     return { shouldContinue: false, isCompleted: false };
@@ -138,7 +158,7 @@ async function processResponse(
   }
 
   // ツール結果を処理
-  const results = await Promise.all(toolUses.map((toolUse) => processToolUse(toolUse, history)));
+  const results = await Promise.all(toolUses.map((toolUse) => processToolUse(toolUse, context)));
   const hasCompletion = results.some((r) => r.isCompleted);
 
   return {
@@ -152,19 +172,20 @@ async function processResponse(
  */
 async function runConversationLoop(
   provider: LLMProvider,
-  history: ConversationHistory,
+  context: AgentContext,
   iterationCount: number
 ): Promise<void> {
-  if (iterationCount >= MAX_ITERATIONS) {
-    console.log("\n⚠️ 最大イテレーション数に達しました");
+  const maxIterations = context.getMaxIterations();
+  if (iterationCount >= maxIterations) {
+    console.log(`\n⚠️ 最大イテレーション数に達しました (${maxIterations})`);
     return;
   }
 
-  const response = await callLLM(provider, history);
-  const { shouldContinue } = await processResponse(response, history);
+  const response = await callLLM(provider, context);
+  const { shouldContinue } = await processResponse(response, context);
 
   if (shouldContinue) {
-    await runConversationLoop(provider, history, iterationCount + 1);
+    await runConversationLoop(provider, context, iterationCount + 1);
   }
 }
 
@@ -194,16 +215,22 @@ async function initializeWorkspace(): Promise<void> {
 /**
  * ヘッダーを表示
  */
-function displayHeader(providerName: string): void {
+function displayHeader(providerName: string, context: AgentContext): void {
   const separator = "=".repeat(SEPARATOR_LENGTH);
   console.log(separator);
   console.log(`AI Agent (${providerName})`);
   console.log(separator);
+
+  const modeConfig = context.getModeConfig();
+  console.log(`\n📋 モード: ${modeConfig.displayName}`);
+  console.log(`   ${modeConfig.description}`);
+
   console.log("\n利用可能なツール:");
-  getToolNames().forEach((name) => {
-    console.log(`  • ${name}`);
+  context.getEnabledTools().forEach((tool) => {
+    console.log(`  • ${tool.name}`);
   });
   console.log("\n終了するには 'exit'、'quit'、または Ctrl+C");
+  console.log("モード変更: /mode <exploration|planning|implementation|review|conversation>");
 }
 
 /**
@@ -217,9 +244,38 @@ function displayFooter(): void {
 }
 
 /**
+ * モード変更コマンドを処理
+ */
+function handleModeCommand(input: string, context: AgentContext): boolean {
+  const modeMatch = input.match(/^\/mode\s+(\w+)$/);
+  if (!modeMatch) {
+    return false;
+  }
+
+  const modeName = modeMatch[1] as AgentMode;
+  const validModes: AgentMode[] = ["exploration", "planning", "implementation", "review", "conversation"];
+
+  if (!validModes.includes(modeName)) {
+    console.log(`\n⚠️ 無効なモード: ${modeName}`);
+    console.log(`   利用可能: ${validModes.join(", ")}`);
+    return true;
+  }
+
+  context.setMode(modeName);
+  const modeConfig = context.getModeConfig();
+  console.log(`\n📋 モード変更: ${modeConfig.displayName}`);
+  console.log(`   ${modeConfig.description}`);
+  console.log("\n利用可能なツール:");
+  context.getEnabledTools().forEach((tool) => {
+    console.log(`  • ${tool.name}`);
+  });
+  return true;
+}
+
+/**
  * メインの会話ループ
  */
-async function mainLoop(provider: LLMProvider, history: ConversationHistory): Promise<void> {
+async function mainLoop(provider: LLMProvider, context: AgentContext): Promise<void> {
   const input = await getUserInput();
 
   // Ctrl+C による中断
@@ -233,11 +289,17 @@ async function mainLoop(provider: LLMProvider, history: ConversationHistory): Pr
     return;
   }
 
-  history.addUserMessage(input);
+  // モード変更コマンド
+  if (handleModeCommand(input, context)) {
+    await mainLoop(provider, context);
+    return;
+  }
+
+  context.addUserMessage(input);
 
   const initialIterationCount = 0;
-  await runConversationLoop(provider, history, initialIterationCount);
-  await mainLoop(provider, history);
+  await runConversationLoop(provider, context, initialIterationCount);
+  await mainLoop(provider, context);
 }
 
 /**
@@ -255,18 +317,18 @@ function setupSignalHandlers(): void {
  * メイン関数
  */
 async function main(): Promise<void> {
-  setupSignalHandlers();
-
   const provider = createLLMProvider();
-  const history = new ConversationHistory();
+  const context = new AgentContext();
 
-  displayHeader(provider.name);
+  setupSignalHandlers();
+  displayHeader(provider.name, context);
 
   try {
     await initializeWorkspace();
-    await mainLoop(provider, history);
+    await mainLoop(provider, context);
     displayFooter();
   } catch (error) {
+    context.addError(error instanceof Error ? error.message : String(error));
     console.error("\n❌ エラーが発生しました:", error);
     if (error instanceof Error) {
       console.error(error.message);

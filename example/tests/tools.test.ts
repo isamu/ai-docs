@@ -7,7 +7,7 @@ import assert from "node:assert";
 import { writeFile, mkdir, rm } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import { getToolDefinitions, executeTool, getToolNames } from "../tools";
+import { getToolDefinitions, executeTool, getToolNames } from "../src/tools";
 
 const TEST_WORKSPACE = path.join(process.cwd(), "workspace");
 const TEST_FILE = "test_file.txt";

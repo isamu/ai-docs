@@ -74,7 +74,8 @@ export interface LLMProvider {
   call(
     messages: BaseMessage[],
     tools: ToolSchema[],
-    onStream?: StreamCallback
+    onStream?: StreamCallback,
+    systemPrompt?: string
   ): Promise<LLMResponse>;
 }
 
