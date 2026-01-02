@@ -25,10 +25,38 @@ export class AgentContext {
   readonly modeManager: ModeManager;
   readonly sessionManager: SessionManager;
 
+  // ターン中の履歴ロック（セッション切り替えがあっても同じ履歴を使用）
+  private turnLockedSessionId: string | null | undefined = undefined;
+
   constructor(config: ContextConfig = {}) {
     this.baseHistory = new ConversationHistory();
     this.modeManager = new ModeManager(config.initialMode ?? DEFAULT_MODE);
     this.sessionManager = new SessionManager();
+  }
+
+  // ========== Turn Management ==========
+
+  /**
+   * ターン開始時に呼び出し - 現在の履歴をロック
+   * セッションツールが実行されても、このターン中は同じ履歴を使用
+   */
+  beginTurn(): void {
+    this.turnLockedSessionId = this.sessionManager.getActiveSession()?.id ?? null;
+  }
+
+  /**
+   * ターン終了時に呼び出し - 履歴ロックを解除
+   * 次のターンでは新しいセッションの履歴を使用
+   */
+  endTurn(): void {
+    this.turnLockedSessionId = undefined;
+  }
+
+  /**
+   * ターン中かどうかを確認
+   */
+  isInTurn(): boolean {
+    return this.turnLockedSessionId !== undefined;
   }
 
   // ========== Mode Management ==========
@@ -156,9 +184,18 @@ export class AgentContext {
 
   /**
    * 現在のアクティブな履歴を取得
-   * セッション中はセッションの履歴、それ以外はbaseHistory
+   * ターン中はロックされた履歴、それ以外はアクティブセッションの履歴
    */
   getCurrentHistory(): ConversationHistory {
+    // ターン中は開始時の履歴を維持（セッション切り替えの影響を受けない）
+    if (this.turnLockedSessionId !== undefined) {
+      if (this.turnLockedSessionId === null) {
+        return this.baseHistory;
+      }
+      return this.sessionManager.getSessionHistory(this.turnLockedSessionId) ?? this.baseHistory;
+    }
+
+    // ターン外は現在のアクティブセッションの履歴
     const sessionHistory = this.sessionManager.getActiveSessionHistory();
     return sessionHistory ?? this.baseHistory;
   }

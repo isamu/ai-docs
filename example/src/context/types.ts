@@ -79,7 +79,14 @@ export const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
     name: "conversation",
     displayName: "Conversation",
     description: "通常の会話モード",
-    systemPrompt: `あなたはAIアシスタントです。ユーザーの質問に答え、タスクを支援します。`,
+    systemPrompt: `あなたはAIアシスタントです。ユーザーの質問に答え、タスクを支援します。
+
+タスク管理:
+- ユーザーがタスク（MulmoScript作成、コード生成等）を依頼した場合は start_session でセッションを開始
+- 「一旦やめて」「後でやる」と言われたら suspend_session で中断
+- 「さっきの続き」と言われたら resume_session で再開
+- タスク完了時は complete_session で終了
+- list_sessions でセッション状態を確認可能`,
     enabledTools: [
       "read_file",
       "write_file",
@@ -87,6 +94,11 @@ export const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
       "calculator",
       "get_current_time",
       "attempt_completion",
+      "start_session",
+      "suspend_session",
+      "resume_session",
+      "complete_session",
+      "list_sessions",
     ],
     allowFileWrite: true,
     maxIterations: 25,

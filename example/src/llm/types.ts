@@ -2,13 +2,20 @@
  * LLM Provider Abstraction Types
  */
 
+// ツールプロパティ定義
+export interface ToolPropertySchema {
+  type: string;
+  description: string;
+  enum?: readonly string[];
+}
+
 // ツール定義（プロバイダー非依存）
 export interface ToolSchema {
   name: string;
   description: string;
   inputSchema: {
     type: "object";
-    properties: Record<string, { type: string; description: string }>;
+    properties: Record<string, ToolPropertySchema>;
     required?: string[];
   };
 }

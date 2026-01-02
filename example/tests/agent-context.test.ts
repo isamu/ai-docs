@@ -435,4 +435,97 @@ describe("AgentContext", () => {
       assert.strictEqual(context.baseHistory.getAll().length, 1);
     });
   });
+
+  describe("turn management", () => {
+    it("should not be in turn initially", () => {
+      assert.strictEqual(context.isInTurn(), false);
+    });
+
+    it("should be in turn after beginTurn", () => {
+      context.beginTurn();
+      assert.strictEqual(context.isInTurn(), true);
+    });
+
+    it("should not be in turn after endTurn", () => {
+      context.beginTurn();
+      context.endTurn();
+      assert.strictEqual(context.isInTurn(), false);
+    });
+
+    it("should use baseHistory during turn even after session starts", () => {
+      // ターン開始（baseHistoryを使用）
+      context.beginTurn();
+      context.addUserMessage("user input");
+
+      // ターン中にセッション開始
+      context.startSession("mulmo", "implementation");
+
+      // ターン中はまだbaseHistoryを使用
+      context.addUserMessage("should go to base");
+      assert.strictEqual(context.baseHistory.getAll().length, 2);
+
+      // ターン終了
+      context.endTurn();
+
+      // ターン終了後はセッション履歴を使用
+      context.addUserMessage("should go to session");
+      const sessionHistory = context.getSessionHistory(context.getActiveSession()!.id);
+      assert.strictEqual(sessionHistory?.getAll().length, 1);
+    });
+
+    it("should maintain history lock for tool results after session starts", () => {
+      context.beginTurn();
+      context.addUserMessage("request");
+
+      // アシスタント応答（tool_use含む）
+      context.addAssistantMessage([
+        { type: "text", text: "Starting session" },
+        { type: "tool_use", toolUse: { id: "tool1", name: "start_session", input: {} } },
+      ]);
+
+      // セッション開始
+      context.startSession("mulmo", "implementation");
+
+      // ツール結果はまだbaseHistoryに
+      context.addToolResult("start_session", "tool1", "Session started");
+
+      // ターン終了前はbaseHistoryに全てある
+      assert.strictEqual(context.baseHistory.getAll().length, 3);
+
+      context.endTurn();
+
+      // 次のターンではセッション履歴を使用
+      context.beginTurn();
+      context.addUserMessage("next message");
+      context.endTurn();
+
+      const sessionHistory = context.getSessionHistory(context.getActiveSession()!.id);
+      assert.strictEqual(sessionHistory?.getAll().length, 1);
+    });
+
+    it("should lock to session history if session is active at turn start", () => {
+      // セッションを開始
+      context.startSession("mulmo", "implementation");
+      const session = context.getActiveSession()!;
+
+      // ターン開始（セッション履歴をロック）
+      context.beginTurn();
+      context.addUserMessage("in session");
+
+      // ターン中にセッション中断
+      context.suspendCurrentSession();
+
+      // ターン中はまだセッション履歴を使用
+      context.addUserMessage("still in session history");
+      const sessionHistory = context.getSessionHistory(session.id);
+      assert.strictEqual(sessionHistory?.getAll().length, 2);
+
+      // ターン終了
+      context.endTurn();
+
+      // ターン終了後はbaseHistoryを使用
+      context.addUserMessage("now in base");
+      assert.strictEqual(context.baseHistory.getAll().length, 1);
+    });
+  });
 });

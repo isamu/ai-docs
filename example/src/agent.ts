@@ -40,16 +40,32 @@ function createLLMProvider(): LLMProvider {
 }
 
 /**
+ * プロンプト文字列を生成（zshスタイル）
+ */
+function buildPrompt(context: AgentContext): string {
+  const mode = context.getMode();
+  const session = context.getActiveSession();
+
+  if (session) {
+    // セッションがある場合: [mode:taskType] >
+    return `\n[${mode}:${session.taskType}] > `;
+  }
+  // セッションがない場合: [mode] >
+  return `\n[${mode}] > `;
+}
+
+/**
  * ユーザー入力を取得
  */
-async function getUserInput(prompt: string = "入力"): Promise<string | null> {
+async function getUserInput(context: AgentContext): Promise<string | null> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
   try {
-    const answer = await rl.question(`\n${prompt}: `);
+    const prompt = buildPrompt(context);
+    const answer = await rl.question(prompt);
     return answer;
   } catch {
     // Ctrl+C による中断
@@ -123,7 +139,7 @@ async function processToolUse(
     return { isCompleted: true };
   }
 
-  const result = await executeTool(toolUse.name, toolUse.input);
+  const result = await executeTool(toolUse.name, toolUse.input, context);
   context.addToolResult(toolUse.name, toolUse.id, result);
   return { isCompleted: false };
 }
@@ -215,22 +231,11 @@ async function initializeWorkspace(): Promise<void> {
 /**
  * ヘッダーを表示
  */
-function displayHeader(providerName: string, context: AgentContext): void {
+function displayHeader(providerName: string): void {
   const separator = "=".repeat(SEPARATOR_LENGTH);
   console.log(separator);
   console.log(`AI Agent (${providerName})`);
   console.log(separator);
-
-  const modeConfig = context.getModeConfig();
-  console.log(`\n📋 モード: ${modeConfig.displayName}`);
-  console.log(`   ${modeConfig.description}`);
-
-  console.log("\n利用可能なツール:");
-  context.getEnabledTools().forEach((tool) => {
-    console.log(`  • ${tool.name}`);
-  });
-  console.log("\n終了するには 'exit'、'quit'、または Ctrl+C");
-  console.log("モード変更: /mode <exploration|planning|implementation|review|conversation>");
 }
 
 /**
@@ -256,8 +261,7 @@ function handleModeCommand(input: string, context: AgentContext): boolean {
   const validModes: AgentMode[] = ["exploration", "planning", "implementation", "review", "conversation"];
 
   if (!validModes.includes(modeName)) {
-    console.log(`\n⚠️ 無効なモード: ${modeName}`);
-    console.log(`   利用可能: ${validModes.join(", ")}`);
+    console.log(`⚠️ 無効なモード: ${modeName}`);
     return true;
   }
 
@@ -266,13 +270,6 @@ function handleModeCommand(input: string, context: AgentContext): boolean {
   if (modeName !== "conversation") {
     context.pushMode(modeName);
   }
-  const modeConfig = context.getModeConfig();
-  console.log(`\n📋 モード変更: ${modeConfig.displayName}`);
-  console.log(`   ${modeConfig.description}`);
-  console.log("\n利用可能なツール:");
-  context.getEnabledTools().forEach((tool) => {
-    console.log(`  • ${tool.name}`);
-  });
   return true;
 }
 
@@ -280,7 +277,7 @@ function handleModeCommand(input: string, context: AgentContext): boolean {
  * メインの会話ループ
  */
 async function mainLoop(provider: LLMProvider, context: AgentContext): Promise<void> {
-  const input = await getUserInput();
+  const input = await getUserInput(context);
 
   // Ctrl+C による中断
   if (input === null) {
@@ -299,10 +296,18 @@ async function mainLoop(provider: LLMProvider, context: AgentContext): Promise<v
     return;
   }
 
-  context.addUserMessage(input);
+  // ターン開始（このターン中はセッション切り替えがあっても同じ履歴を使用）
+  context.beginTurn();
+  try {
+    context.addUserMessage(input);
 
-  const initialIterationCount = 0;
-  await runConversationLoop(provider, context, initialIterationCount);
+    const initialIterationCount = 0;
+    await runConversationLoop(provider, context, initialIterationCount);
+  } finally {
+    // ターン終了（次のターンでは新しいセッションの履歴を使用）
+    context.endTurn();
+  }
+
   await mainLoop(provider, context);
 }
 
@@ -325,7 +330,7 @@ async function main(): Promise<void> {
   const context = new AgentContext();
 
   setupSignalHandlers();
-  displayHeader(provider.name, context);
+  displayHeader(provider.name);
 
   try {
     await initializeWorkspace();
