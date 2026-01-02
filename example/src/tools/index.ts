@@ -7,12 +7,14 @@ import { listFilesTool } from "./list_files";
 import { calculatorTool } from "./calculator";
 import { getCurrentTimeTool } from "./get_current_time";
 import { attemptCompletionTool } from "./attempt_completion";
+import { shellTool } from "./shell";
+import { httpFetchTool } from "./http_fetch";
 import { sessionTools } from "./session";
 
 const ERROR_UNKNOWN_TOOL = (toolName: string): string => `エラー: 不明なツール '${toolName}'`;
 const ERROR_GENERIC = (message: string): string => `エラー: ${message}`;
 
-// 通常ツールを登録
+// 通常ツール（コアツール）を登録
 const toolRegistry: Record<string, ToolDefinition> = {
   read_file: readFileTool,
   write_file: writeFileTool,
@@ -20,6 +22,8 @@ const toolRegistry: Record<string, ToolDefinition> = {
   calculator: calculatorTool,
   get_current_time: getCurrentTimeTool,
   attempt_completion: attemptCompletionTool,
+  shell: shellTool,
+  http_fetch: httpFetchTool,
 };
 
 // コンテキスト対応ツールを登録
