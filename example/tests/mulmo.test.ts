@@ -11,11 +11,9 @@ import {
   validateMulmoScript,
   formatValidationErrors,
   MulmoScriptInputSchema,
-} from "../src/mulmo/schema";
-import {
   createBeatsOnMulmoScriptTool,
   validateMulmoScriptTool,
-} from "../src/mulmo/tools";
+} from "../src/tasks/definitions/mulmo";
 import { AgentContext } from "../src/context";
 import { startSessionTool } from "../src/tools/session";
 

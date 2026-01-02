@@ -1,6 +1,14 @@
+/**
+ * Tools Registry
+ * ツールの登録と実行
+ */
+
 import { ToolSchema } from "../llm/types";
-import { ToolDefinition, ContextAwareToolDefinition } from "./types";
+import { ToolDefinition } from "./types";
 import { AgentContext } from "../context";
+import { getTaskConfigManager } from "../tasks";
+
+// コアツールのインポート
 import { readFileTool } from "./read_file";
 import { writeFileTool } from "./write_file";
 import { listFilesTool } from "./list_files";
@@ -10,14 +18,14 @@ import { attemptCompletionTool } from "./attempt_completion";
 import { shellTool } from "./shell";
 import { httpFetchTool } from "./http_fetch";
 import { sessionTools } from "./session";
-import { mulmoTools } from "../mulmo";
 
 const ERROR_UNKNOWN_TOOL = (toolName: string): string => `エラー: 不明なツール '${toolName}'`;
 const ERROR_GENERIC = (message: string): string => `エラー: ${message}`;
 
-// 通常ツール（コアツール）を登録
-const toolRegistry: Record<string, ToolDefinition> = {
+// コアツールを登録
+const coreToolRegistry: Record<string, ToolDefinition> = {
   read_file: readFileTool,
+  write_file: writeFileTool,
   list_files: listFilesTool,
   calculator: calculatorTool,
   get_current_time: getCurrentTimeTool,
@@ -26,39 +34,40 @@ const toolRegistry: Record<string, ToolDefinition> = {
   http_fetch: httpFetchTool,
 };
 
-// コンテキスト対応ツールを登録
-// write_file はタスクに応じた制限があるためコンテキスト対応
-const contextAwareToolRegistry: Record<string, ContextAwareToolDefinition> = {
-  write_file: writeFileTool,
-};
+// セッション管理ツールを登録
+const sessionToolRegistry: Record<string, ToolDefinition> = {};
 sessionTools.forEach((tool) => {
-  contextAwareToolRegistry[tool.definition.name] = tool;
-});
-mulmoTools.forEach((tool) => {
-  contextAwareToolRegistry[tool.definition.name] = tool;
+  sessionToolRegistry[tool.definition.name] = tool;
 });
 
 /**
- * ツール定義の配列を取得
+ * 全ツール定義を取得（タスク固有ツールを含む）
  */
 export function getToolDefinitions(): ToolSchema[] {
-  const regularTools = Object.values(toolRegistry).map((tool) => tool.definition);
-  const contextAwareTools = Object.values(contextAwareToolRegistry).map((tool) => tool.definition);
-  return [...regularTools, ...contextAwareTools];
+  const coreTools = Object.values(coreToolRegistry).map((tool) => tool.definition);
+  const sessionToolDefs = Object.values(sessionToolRegistry).map((tool) => tool.definition);
+
+  // タスク固有ツールを追加
+  const taskConfigManager = getTaskConfigManager();
+  const taskToolDefs: ToolSchema[] = [];
+  for (const taskName of taskConfigManager.getTaskNames()) {
+    const tools = taskConfigManager.getTaskTools(taskName);
+    for (const tool of tools) {
+      // 重複を避ける
+      if (!taskToolDefs.some((t) => t.name === tool.definition.name)) {
+        taskToolDefs.push(tool.definition);
+      }
+    }
+  }
+
+  return [...coreTools, ...sessionToolDefs, ...taskToolDefs];
 }
 
 /**
- * 通常ツールの定義のみ取得
+ * コアツールの定義のみ取得
  */
-export function getRegularToolDefinitions(): ToolSchema[] {
-  return Object.values(toolRegistry).map((tool) => tool.definition);
-}
-
-/**
- * コンテキスト対応ツールの定義のみ取得
- */
-export function getContextAwareToolDefinitions(): ToolSchema[] {
-  return Object.values(contextAwareToolRegistry).map((tool) => tool.definition);
+export function getCoreToolDefinitions(): ToolSchema[] {
+  return Object.values(coreToolRegistry).map((tool) => tool.definition);
 }
 
 /**
@@ -71,11 +80,11 @@ export async function executeTool(
 ): Promise<string> {
   console.log(`   入力: ${JSON.stringify(input)}`);
 
-  // まず通常ツールを確認
-  const tool = toolRegistry[toolName];
-  if (tool) {
+  // コアツールを確認
+  const coreTool = coreToolRegistry[toolName];
+  if (coreTool) {
     try {
-      return await tool.execute(input);
+      return await coreTool.execute(input, context);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.log(`   エラー: ${errorMessage}`);
@@ -83,18 +92,34 @@ export async function executeTool(
     }
   }
 
-  // コンテキスト対応ツールを確認
-  const contextAwareTool = contextAwareToolRegistry[toolName];
-  if (contextAwareTool) {
+  // セッションツールを確認
+  const sessionTool = sessionToolRegistry[toolName];
+  if (sessionTool) {
     if (!context) {
       return ERROR_GENERIC(`ツール '${toolName}' の実行にはコンテキストが必要です`);
     }
     try {
-      return await contextAwareTool.execute(input, context);
+      return await sessionTool.execute(input, context);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.log(`   エラー: ${errorMessage}`);
       return ERROR_GENERIC(errorMessage);
+    }
+  }
+
+  // タスク固有ツールを確認
+  const taskConfigManager = getTaskConfigManager();
+  for (const taskName of taskConfigManager.getTaskNames()) {
+    const tools = taskConfigManager.getTaskTools(taskName);
+    const taskTool = tools.find((t) => t.definition.name === toolName);
+    if (taskTool) {
+      try {
+        return await taskTool.execute(input, context);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.log(`   エラー: ${errorMessage}`);
+        return ERROR_GENERIC(errorMessage);
+      }
     }
   }
 
@@ -105,14 +130,40 @@ export async function executeTool(
  * ツール名の一覧を取得
  */
 export function getToolNames(): string[] {
-  return [...Object.keys(toolRegistry), ...Object.keys(contextAwareToolRegistry)];
+  const coreNames = Object.keys(coreToolRegistry);
+  const sessionNames = Object.keys(sessionToolRegistry);
+
+  const taskConfigManager = getTaskConfigManager();
+  const taskNames: string[] = [];
+  for (const taskName of taskConfigManager.getTaskNames()) {
+    const tools = taskConfigManager.getTaskTools(taskName);
+    for (const tool of tools) {
+      if (!taskNames.includes(tool.definition.name)) {
+        taskNames.push(tool.definition.name);
+      }
+    }
+  }
+
+  return [...coreNames, ...sessionNames, ...taskNames];
 }
 
 /**
- * ツールがコンテキスト対応かどうかを判定
+ * ツールがコンテキストを必要とするかどうかを判定
  */
-export function isContextAwareTool(toolName: string): boolean {
-  return toolName in contextAwareToolRegistry;
+export function isContextRequiredTool(toolName: string): boolean {
+  // セッションツールはコンテキスト必須
+  if (toolName in sessionToolRegistry) {
+    return true;
+  }
+  // タスク固有ツールもコンテキスト必須
+  const taskConfigManager = getTaskConfigManager();
+  for (const taskName of taskConfigManager.getTaskNames()) {
+    const tools = taskConfigManager.getTaskTools(taskName);
+    if (tools.some((t) => t.definition.name === toolName)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export type { ToolDefinition } from "./types";

@@ -71,7 +71,8 @@ describe("TaskConfigManager", () => {
     it("should return enabled tools for task", () => {
       const tools = manager.getEnabledTools("mulmo");
       assert.ok(tools.includes("read_file"));
-      assert.ok(tools.includes("write_file"));
+      // mulmoタスクでは write_file の代わりに createBeatsOnMulmoScript を使用
+      assert.ok(tools.includes("createBeatsOnMulmoScript"));
     });
 
     it("should return empty array for unknown task", () => {
