@@ -8,6 +8,7 @@ import { writeFile, mkdir, rm } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
 import { getToolDefinitions, executeTool, getToolNames } from "../src/tools";
+import { AgentContext } from "../src/context";
 
 const TEST_WORKSPACE = path.join(process.cwd(), "workspace");
 const TEST_FILE = "test_file.txt";
@@ -114,23 +115,45 @@ describe("Tools", () => {
 
     describe("write_file", () => {
       it("should write file content", async () => {
+        const context = new AgentContext();
         const content = "書き込みテスト";
         const result = await executeTool("write_file", {
           path: "output.txt",
           content,
-        });
+        }, context);
 
         assert.ok(result.includes("書き込みました"));
       });
 
       it("should return error for path outside workspace", async () => {
+        const context = new AgentContext();
         const result = await executeTool("write_file", {
           path: "../outside.txt",
           content: "テスト",
-        });
+        }, context);
 
         assert.ok(result.includes("エラー"));
         assert.ok(result.includes("ワークスペース外"));
+      });
+
+      it("should block write_file in mulmo task and suggest correct tool", async () => {
+        const context = new AgentContext();
+        // mulmoタスクを開始
+        context.startSession("mulmo", "implementation", {
+          description: "test",
+          currentPhase: "writing",
+          phaseIndex: 1,
+          phaseHistory: ["planning", "writing"],
+          artifacts: [],
+        });
+
+        const result = await executeTool("write_file", {
+          path: "test.mulmo.json",
+          content: "{}",
+        }, context);
+
+        assert.ok(result.includes("createBeatsOnMulmoScript"));
+        assert.ok(result.includes("専用ツール"));
       });
     });
 

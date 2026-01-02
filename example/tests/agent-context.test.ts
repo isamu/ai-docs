@@ -528,4 +528,49 @@ describe("AgentContext", () => {
       assert.strictEqual(context.baseHistory.getAll().length, 1);
     });
   });
+
+  describe("task-specific tools", () => {
+    it("should return mode tools when no session active", () => {
+      const tools = context.getEnabledTools();
+      const toolNames = tools.map((t) => t.name);
+
+      // conversation modeのツール
+      assert.ok(toolNames.includes("read_file"));
+      assert.ok(toolNames.includes("write_file"));
+    });
+
+    it("should return task tools when session active with phase", () => {
+      // mulmo writingフェーズの状態でセッション開始
+      context.startSession("mulmo", "implementation", {
+        description: "test",
+        currentPhase: "writing",
+        phaseIndex: 1,
+        phaseHistory: ["planning", "writing"],
+        artifacts: [],
+      });
+
+      const tools = context.getEnabledTools();
+      const toolNames = tools.map((t) => t.name);
+
+      // writingフェーズでは createBeatsOnMulmoScript が有効、write_file は無効
+      assert.ok(toolNames.includes("createBeatsOnMulmoScript"));
+      assert.ok(toolNames.includes("read_file"));
+      assert.ok(!toolNames.includes("write_file"), "write_file should not be enabled in writing phase");
+    });
+
+    it("should return task system prompt when session active", () => {
+      context.startSession("mulmo", "implementation", {
+        description: "test",
+        currentPhase: "writing",
+        phaseIndex: 1,
+        phaseHistory: ["planning", "writing"],
+        artifacts: [],
+      });
+
+      const prompt = context.getSystemPrompt();
+
+      assert.ok(prompt.includes("createBeatsOnMulmoScript"));
+      assert.ok(prompt.includes("【重要】"));
+    });
+  });
 });

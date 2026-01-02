@@ -19,6 +19,7 @@ import {
 } from "./types";
 import { ModeManager } from "./mode-manager";
 import { SessionManager } from "./session-manager";
+import { getTaskConfigManager, TaskSessionState } from "../tasks";
 
 export class AgentContext {
   readonly baseHistory: ConversationHistory;
@@ -69,7 +70,26 @@ export class AgentContext {
     return MODE_CONFIGS[this.getMode()];
   }
 
+  /**
+   * システムプロンプトを取得
+   * タスクがアクティブな場合はタスク設定を使用
+   */
   getSystemPrompt(): string {
+    const session = this.sessionManager.getActiveSession();
+
+    // タスクがアクティブな場合はタスク設定のシステムプロンプトを使用
+    if (session) {
+      const configManager = getTaskConfigManager();
+      const state = session.state as TaskSessionState | undefined;
+      const currentPhase = state?.currentPhase;
+
+      const taskPrompt = configManager.getSystemPrompt(session.taskType, currentPhase);
+      if (taskPrompt) {
+        return taskPrompt;
+      }
+    }
+
+    // フォールバック: モード設定のプロンプト
     return this.getModeConfig().systemPrompt;
   }
 
@@ -270,14 +290,41 @@ export class AgentContext {
 
   // ========== Tool Management ==========
 
+  /**
+   * 有効なツールを取得
+   * タスクがアクティブな場合はタスク設定を使用
+   */
   getEnabledTools(): ToolSchema[] {
-    const enabledToolNames = this.getModeConfig().enabledTools;
+    const enabledToolNames = this.getEnabledToolNames();
     const allTools = getToolDefinitions();
     return allTools.filter((tool) => enabledToolNames.includes(tool.name));
   }
 
+  /**
+   * 有効なツール名一覧を取得
+   */
+  private getEnabledToolNames(): string[] {
+    const session = this.sessionManager.getActiveSession();
+
+    // タスクがアクティブな場合はタスク設定を使用
+    if (session) {
+      const configManager = getTaskConfigManager();
+      const state = session.state as TaskSessionState | undefined;
+      const currentPhase = state?.currentPhase;
+
+      // フェーズ固有またはタスクのツール設定を取得
+      const taskTools = configManager.getEnabledTools(session.taskType, currentPhase);
+      if (taskTools.length > 0) {
+        return taskTools;
+      }
+    }
+
+    // フォールバック: モード設定のツール
+    return this.getModeConfig().enabledTools;
+  }
+
   isToolEnabled(toolName: string): boolean {
-    return this.getModeConfig().enabledTools.includes(toolName);
+    return this.getEnabledToolNames().includes(toolName);
   }
 
   // ========== Constraints ==========

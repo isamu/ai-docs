@@ -104,13 +104,8 @@ export class TaskConfigManager {
       }
     }
 
-    // デフォルトはコアツール + タスク固有ツール
-    const taskSpecificTools = this.taskTools.get(taskName) ?? [];
-    const enabledTaskTools = config.enabledTaskTools.filter((t) =>
-      taskSpecificTools.includes(t)
-    );
-
-    return [...config.enabledCoreTools, ...enabledTaskTools];
+    // コアツール + タスク固有ツール（設定に定義されているものをすべて返す）
+    return [...config.enabledCoreTools, ...config.enabledTaskTools];
   }
 
   /**
@@ -195,37 +190,49 @@ const DEFAULT_TASK_CONFIGS: TaskConfig[] = [
 
 ## MulmoScriptについて
 - JSON形式の動画スクリプトフォーマット
-- シーンごとにテキスト、画像、音声を定義
-- ナレーションとビジュアルを組み合わせて動画を生成
+- beats配列でシーンごとのナレーションを定義
+- 各beatにはtext（必須）、speaker、imagePrompt/moviePromptを指定
 
 ## 作成手順
-1. ユーザーの要望を理解
-2. 全体構成を計画
-3. 各シーンを詳細に作成
-4. バリデーションで確認`,
+1. ヒアリング: ユーザーの要望を詳しく聞く
+2. スクリプト作成: createBeatsOnMulmoScriptでスクリプト生成
+3. 検証: validate_mulmoでバリデーション`,
     enabledCoreTools: ["read_file", "write_file", "list_files"],
-    enabledTaskTools: ["validate_mulmo"],
+    enabledTaskTools: ["createBeatsOnMulmoScript", "validate_mulmo"],
     phases: [
       {
         name: "planning",
-        description: "構成を計画",
-        goal: "アウトラインの作成",
-        systemPrompt: "まずユーザーの要望を確認し、動画の構成を計画してください。",
+        description: "ヒアリングと構成計画",
+        goal: "ユーザー要望の把握とアウトライン作成",
+        systemPrompt: `ユーザーの要望を詳しくヒアリングしてください。
+- どんな動画を作りたいか
+- 対象視聴者は誰か
+- 動画の長さ・シーン数の希望
+- 画風やトーンの希望
+
+ヒアリング完了後、構成案を提示してください。`,
         requiresApproval: true,
-        approvalPrompt: "この構成でよろしいですか？",
+        approvalPrompt: "この構成でMulmoScriptを作成してよろしいですか？",
       },
       {
         name: "writing",
         description: "スクリプト作成",
         goal: "MulmoScriptファイルの完成",
-        systemPrompt: "計画に基づいてMulmoScriptを作成してください。",
+        systemPrompt: `【重要】createBeatsOnMulmoScriptツールを必ず使ってスクリプトを作成してください。
+write_fileは使わないでください。createBeatsOnMulmoScriptがファイル保存も行います。
+
+- 各シーンをbeatとして定義
+- textには読み上げるナレーションを記載
+- imagePromptまたはmoviePromptで画像/動画生成用プロンプトを英語で記載`,
+        enabledTools: ["read_file", "createBeatsOnMulmoScript"],
       },
       {
         name: "validation",
         description: "検証と修正",
         goal: "エラーのない完成品",
-        systemPrompt: "作成したスクリプトを検証し、必要に応じて修正してください。",
-        enabledTools: ["read_file", "write_file", "validate_mulmo"],
+        systemPrompt: `validate_mulmoで作成したスクリプトを検証してください。
+修正が必要な場合はcreateBeatsOnMulmoScriptで再作成してください。`,
+        enabledTools: ["read_file", "validate_mulmo", "createBeatsOnMulmoScript"],
       },
     ],
     completionCriteria: [

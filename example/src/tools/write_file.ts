@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import { ToolDefinition } from "./types";
+import { ContextAwareToolDefinition } from "./types";
 
 const WORKSPACE_DIR = path.join(process.cwd(), "workspace");
 
@@ -17,7 +17,23 @@ const ERROR_MESSAGES = {
 
 const SUCCESS_MESSAGE = (filePath: string): string => `✅ ファイルを書き込みました: ${filePath}`;
 
-export const writeFileTool: ToolDefinition = {
+/**
+ * タスクタイプごとの書き込み制限
+ * 特定のタスクでは専用ツールの使用を強制
+ */
+const TASK_WRITE_RESTRICTIONS: Record<string, {
+  message: string;
+  suggestedTool: string;
+  allowedExtensions?: string[];
+}> = {
+  mulmo: {
+    message: "MulmoScriptの作成にはwrite_fileではなく専用ツールを使ってください",
+    suggestedTool: "createBeatsOnMulmoScript",
+    allowedExtensions: [], // mulmoタスクではwrite_file禁止
+  },
+};
+
+export const writeFileTool: ContextAwareToolDefinition = {
   definition: {
     name: "write_file",
     description:
@@ -38,8 +54,28 @@ export const writeFileTool: ToolDefinition = {
     },
   },
 
-  async execute(rawInput: Record<string, unknown>): Promise<string> {
+  async execute(rawInput: Record<string, unknown>, context): Promise<string> {
     const input = rawInput as unknown as WriteFileInput;
+
+    // タスクコンテキストをチェック
+    const session = context?.getActiveSession();
+    if (session) {
+      const restriction = TASK_WRITE_RESTRICTIONS[session.taskType];
+      if (restriction) {
+        const ext = path.extname(input.path).toLowerCase();
+        const isAllowed = restriction.allowedExtensions?.includes(ext) ?? false;
+
+        if (!isAllowed) {
+          return `⚠️ ${restriction.message}
+
+現在のタスク: ${session.taskType}
+推奨ツール: ${restriction.suggestedTool}
+
+${restriction.suggestedTool}ツールを使用してください。このツールは入力を検証し、正しい形式でファイルを生成します。`;
+        }
+      }
+    }
+
     const filePath = path.resolve(WORKSPACE_DIR, input.path);
 
     if (!filePath.startsWith(WORKSPACE_DIR)) {

@@ -7,6 +7,11 @@ export interface ToolPropertySchema {
   type: string;
   description: string;
   enum?: readonly string[];
+  items?: ToolPropertySchema | {
+    type: string;
+    properties?: Record<string, ToolPropertySchema>;
+    required?: string[];
+  };
 }
 
 // ツール定義（プロバイダー非依存）

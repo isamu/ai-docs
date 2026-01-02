@@ -10,6 +10,7 @@ import { attemptCompletionTool } from "./attempt_completion";
 import { shellTool } from "./shell";
 import { httpFetchTool } from "./http_fetch";
 import { sessionTools } from "./session";
+import { mulmoTools } from "../mulmo";
 
 const ERROR_UNKNOWN_TOOL = (toolName: string): string => `エラー: 不明なツール '${toolName}'`;
 const ERROR_GENERIC = (message: string): string => `エラー: ${message}`;
@@ -17,7 +18,6 @@ const ERROR_GENERIC = (message: string): string => `エラー: ${message}`;
 // 通常ツール（コアツール）を登録
 const toolRegistry: Record<string, ToolDefinition> = {
   read_file: readFileTool,
-  write_file: writeFileTool,
   list_files: listFilesTool,
   calculator: calculatorTool,
   get_current_time: getCurrentTimeTool,
@@ -27,8 +27,14 @@ const toolRegistry: Record<string, ToolDefinition> = {
 };
 
 // コンテキスト対応ツールを登録
-const contextAwareToolRegistry: Record<string, ContextAwareToolDefinition> = {};
+// write_file はタスクに応じた制限があるためコンテキスト対応
+const contextAwareToolRegistry: Record<string, ContextAwareToolDefinition> = {
+  write_file: writeFileTool,
+};
 sessionTools.forEach((tool) => {
+  contextAwareToolRegistry[tool.definition.name] = tool;
+});
+mulmoTools.forEach((tool) => {
   contextAwareToolRegistry[tool.definition.name] = tool;
 });
 
